@@ -8,7 +8,7 @@ const {
   privateKey,
   sub,
   tid,
-} = require('./private_key.js')
+} = require('./creds.js')
 
 const allow = 'https://weather-et.web.app'
 
@@ -33,7 +33,7 @@ function getAuthHeader() {
   }
 }
 
-async function available (lat, lng, headers) {
+async function available(lat, lng, headers) {
   const reqUrl = `https://weatherkit.apple.com/api/v1/availability/${lat}/${lng}`
 
   const resp = await fetch(reqUrl, { headers })
@@ -43,6 +43,26 @@ async function available (lat, lng, headers) {
   return data
 }
 
+async function weather(lat, lng) {
+  const headers = getAuthHeader()
+
+  const avail = await available(lat, lng, headers)
+
+  const dataSets = avail.join(',')
+
+  // can add &timezone=America/Toronto if needed
+  const reqUrl = `https://weatherkit.apple.com/api/v1/weather/en/${lat}/${lng}?dataSets=${dataSets}`
+
+  const resp = await fetch(reqUrl, { headers })
+
+  const data = await resp.json()
+
+  const keys = Object.keys(data)
+
+  return {keys, ...data}
+}
+
+// locks api for expo web, cors won't work for mobile apps
 exports.weather = onRequest({cors: true}, async(req, res) => {
   const { FIREBASE_DEV } = process.env
   if (FIREBASE_DEV !== 'FOOBAR') {
@@ -60,20 +80,16 @@ exports.weather = onRequest({cors: true}, async(req, res) => {
 
   const { lat, lng } = req.query
 
-  const headers = getAuthHeader()
+  const resp = await weather(lat, lng)
+  res.send(resp)
+})
 
-  const avail = await available(lat, lng, headers)
+// this needs to be locked down some other way
+// TODO: https://firebase.google.com/docs/app-check
+exports.weather_mobile = onRequest(async(req,res) => {
+  const { lat, lng } = req.query
 
-  const dataSets = avail.join(',')
+  const resp = await weather(lat, lng)
 
-  // can add &timezone=America/Toronto if needed
-  const reqUrl = `https://weatherkit.apple.com/api/v1/weather/en/${lat}/${lng}?dataSets=${dataSets}`
-
-  const resp = await fetch(reqUrl, { headers })
-
-  const data = await resp.json()
-
-  const keys = Object.keys(data)
-  
-  res.send({keys, ...data})
+  res.send(resp)
 })
